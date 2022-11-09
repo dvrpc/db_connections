@@ -6,7 +6,6 @@ const DIR: &str = "/home/kris";
 /// Recursively traverse from starting directory.
 fn traverse(dir: &Path) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
-        // will need to ignore/track errors (such as PermissionDenied)
         let entry = entry?;
         if entry.file_type()?.is_dir() {
             traverse(&entry.path())?
@@ -22,10 +21,13 @@ fn traverse(dir: &Path) -> std::io::Result<()> {
 fn main() -> std::io::Result<()> {
     let dir = Path::new(DIR);
     if dir.is_dir() {
-        traverse(dir)?;
+        if let Err(e) = traverse(dir) {
+            // for now, just show errors
+            // will need to handle/explicitly ignore later
+            eprintln!("Error: {e}")
+        }
     } else {
         eprintln!("Cannot find directory {:?}", dir);
     }
-
     Ok(())
 }
