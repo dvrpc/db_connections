@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-const DIR: &str = "/home/kris";
+const DIR: &str = env!("DB_CONNECTIONS_DIR");
 
 /// Recursively traverse from starting directory.
 fn traverse(dir: &Path) -> std::io::Result<()> {
