@@ -1,7 +1,73 @@
 use std::fs;
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 const DIR: &str = env!("DB_CONNECTIONS_DIR");
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct Add {
+    name: String,
+    #[serde(rename = "connectionString")]
+    connection_string: String,
+    provider: Option<String>,
+    #[serde(rename = "providerName")]
+    provider_name: Option<String>,
+}
+
+#[derive(Debug)]
+struct ConnectionString {
+    data_source: Option<String>,
+    user_id: Option<String>,
+    password: Option<String>,
+}
+
+impl ConnectionString {
+    /// Parse connection string
+    fn new(conn_str: String) -> Result<Self, String> {
+        let mut connection_string = Self {
+            data_source: None,
+            user_id: None,
+            password: None,
+        };
+
+        for pair in conn_str.split(';') {
+            if let Some(v) = pair.trim().split_once('=') {
+                if v.0.trim() == "Data Source" {
+                    connection_string.data_source = Some(v.1.trim().to_string());
+                }
+                if v.0.trim() == "User Id" {
+                    connection_string.user_id = Some(v.1.trim().to_string());
+                }
+                if v.0.trim() == "Password" {
+                    connection_string.password = Some(v.1.trim().to_string());
+                }
+            }
+        }
+        if connection_string.data_source.is_none() || connection_string.user_id.is_none() {
+            return Err("Notice: no data source or user id in string".to_string());
+        }
+        Ok(connection_string)
+    }
+}
+
+/// Use xml parser to get connection string
+fn extract(f: &Path) {
+    // let config = ParserConfig::new().trim_whitespace(true);
+
+    let content = fs::read_to_string(f).unwrap();
+    for line in content.lines() {
+        if line.trim().starts_with('<') && line.contains("provider") {
+            match serde_xml_rs::from_str::<Add>(line) {
+                Ok(v) => {
+                    let cs = ConnectionString::new(v.connection_string.clone());
+                    println!("{:?}", cs);
+                }
+                Err(e) => println!("{e}"),
+            }
+        }
+    }
+}
 
 /// Recursively traverse from starting directory.
 fn traverse(dir: &Path) -> std::io::Result<()> {
@@ -11,7 +77,7 @@ fn traverse(dir: &Path) -> std::io::Result<()> {
             traverse(&entry.path())?
         } else if let Some(v) = entry.path().extension() {
             if v == "txt" {
-                println!("{:?}", entry.path());
+                extract(&entry.path());
             }
         }
     }
