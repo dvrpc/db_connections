@@ -61,7 +61,7 @@ fn extract(f: &Path) {
             match serde_xml_rs::from_str::<Add>(line) {
                 Ok(v) => {
                     let cs = ConnectionString::new(v.connection_string.clone());
-                    println!("{:?}", cs);
+                    println!("{:?}: {:?}", f, cs);
                 }
                 Err(e) => println!("{e}"),
             }
