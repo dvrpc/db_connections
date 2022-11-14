@@ -76,8 +76,10 @@ fn traverse(dir: &Path) -> std::io::Result<()> {
         if entry.file_type()?.is_dir() {
             traverse(&entry.path())?
         } else if let Some(v) = entry.path().extension() {
-            if v == "txt" {
-                extract(&entry.path());
+            if let Some(v) = v.to_str() {
+                if ["config", "aspx", "asp"].contains(&v) {
+                    extract(&entry.path());
+                }
             }
         }
     }
