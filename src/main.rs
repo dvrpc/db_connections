@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -51,52 +51,59 @@ impl ConnectionString {
     }
 }
 
-/// Use xml parser to get connection string
-fn extract(f: &Path) {
+fn extract(f: &Path) -> Vec<ConnectionString> {
     // let config = ParserConfig::new().trim_whitespace(true);
+
+    let mut connection_strings = vec![];
 
     let content = fs::read_to_string(f).unwrap();
     for line in content.lines() {
         if line.trim().starts_with('<') && line.contains("provider") {
             match serde_xml_rs::from_str::<Add>(line) {
                 Ok(v) => {
-                    let cs = ConnectionString::new(v.connection_string.clone());
-                    println!("{:?}: {:?}", f, cs);
+                    // println!("{:?}: {:?}", f, cs);
+                    if let Ok(v) = ConnectionString::new(v.connection_string.clone()) {
+                        connection_strings.push(v)
+                    }
                 }
                 Err(e) => println!("{e}"),
             }
         }
     }
+    connection_strings
 }
 
-/// Recursively traverse from starting directory.
-fn traverse(dir: &Path) -> std::io::Result<()> {
+// Get files matching extensions we want
+fn traverse(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBuf>> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            traverse(&entry.path())?
+            files = traverse(entry.path(), files)?
         } else if let Some(v) = entry.path().extension() {
             if let Some(v) = v.to_str() {
                 if ["config", "aspx", "asp"].contains(&v) {
-                    extract(&entry.path());
+                    files.push(entry.path().clone());
                 }
             }
         }
     }
-    Ok(())
+    Ok(files)
 }
 
 fn main() -> std::io::Result<()> {
     let dir = Path::new(DIR);
+    let files = vec![];
+    let mut connection_strings = vec![];
+
     if dir.is_dir() {
-        if let Err(e) = traverse(dir) {
-            // for now, just show errors
-            // will need to handle/explicitly ignore later
-            eprintln!("Error: {e}")
+        if let Ok(v) = traverse(dir.to_path_buf(), files) {
+            for file in v {
+                connection_strings.extend(extract(&file));
+            }
         }
-    } else {
-        eprintln!("Cannot find directory {:?}", dir);
     }
+    println!("{:?}", connection_strings);
+
     Ok(())
 }
 
