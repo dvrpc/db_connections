@@ -99,3 +99,22 @@ fn main() -> std::io::Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // test extraction of connection string from line
+
+    // test parsing of connection string
+    #[test]
+    fn conn_str_created_successfully() {
+        let raw_cs = "Data Source=dvrpcdb2; User Id=NETS; Password=something;".to_string();
+        let cs = ConnectionString::new(raw_cs);
+        assert!(matches!(cs, Ok(_)));
+        let cs = cs.unwrap();
+        assert_eq!(cs.data_source, Some("dvrpcdb2".to_string()));
+        assert_eq!(cs.user_id, Some("NETS".to_string()));
+        assert_eq!(cs.password, Some("something".to_string()))
+    }
+}
