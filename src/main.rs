@@ -1,5 +1,4 @@
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use csv::Writer;
@@ -18,66 +17,74 @@ struct Add {
 }
 
 #[derive(Debug)]
-struct ConnectionString {
+struct Connection {
+    path: Option<String>,
     data_source: Option<String>,
     user_id: Option<String>,
-    password: Option<String>,
-    path: Option<String>,
+    provider: Option<String>,
 }
 
-impl ConnectionString {
-    /// Parse connection string
-    fn new(conn_str: String, filepath: String) -> Result<Self, String> {
-        let mut connection_string = Self {
+impl Connection {
+    fn new(path: String, conn_str: String, provider: String) -> Result<Self, String> {
+        let mut connection = Self {
+            path: None,
             data_source: None,
             user_id: None,
-            password: None,
-            path: None,
+            provider: None,
         };
 
         for pair in conn_str.split(';') {
             if let Some(v) = pair.trim().split_once('=') {
                 if v.0.trim() == "Data Source" {
-                    connection_string.data_source = Some(v.1.trim().to_string());
+                    connection.data_source = Some(v.1.trim().to_string());
                 }
                 if v.0.trim() == "User Id" {
-                    connection_string.user_id = Some(v.1.trim().to_string());
-                }
-                if v.0.trim() == "Password" {
-                    connection_string.password = Some(v.1.trim().to_string());
+                    connection.user_id = Some(v.1.trim().to_string());
                 }
             }
-            connection_string.path = Some(filepath.clone());
         }
-        if connection_string.data_source.is_none() || connection_string.user_id.is_none() {
+        connection.path = Some(path);
+        connection.provider = Some(provider);
+
+        if connection.data_source.is_none() || connection.user_id.is_none() {
             return Err("Notice: no data source or user id in string".to_string());
         }
-        Ok(connection_string)
+        Ok(connection)
     }
 }
 
-fn extract(f: &Path) -> Vec<ConnectionString> {
+fn extract(f: &Path) -> Vec<Connection> {
     // let config = ParserConfig::new().trim_whitespace(true);
 
-    let mut connection_strings = vec![];
+    let mut connections = vec![];
 
     let content = fs::read_to_string(f).unwrap();
     for line in content.lines() {
         if line.trim().starts_with('<') && line.contains("provider") {
             match serde_xml_rs::from_str::<Add>(line) {
                 Ok(v) => {
-                    if let Ok(v) = ConnectionString::new(
-                        v.connection_string.clone(),
+                    let provider = if v.provider.is_some() {
+                        v.provider.unwrap()
+                    } else if v.provider_name.is_some() {
+                        v.provider_name.unwrap()
+                    } else {
+                        // let this pass but point it out
+                        "Unrecognized provider format".to_string()
+                    };
+
+                    if let Ok(v) = Connection::new(
                         f.to_string_lossy().to_string(),
+                        v.connection_string.clone(),
+                        provider,
                     ) {
-                        connection_strings.push(v)
+                        connections.push(v)
                     }
                 }
                 Err(e) => println!("{e}"),
             }
         }
     }
-    connection_strings
+    connections
 }
 
 // Get files matching extensions we want
@@ -98,29 +105,32 @@ fn traverse(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBu
 }
 
 fn main() -> std::io::Result<()> {
+    // crawl files and extract db connections
     let dir = Path::new(DIR);
     let files = vec![];
-    let mut connection_strings = vec![];
+    let mut connections = vec![];
 
     if dir.is_dir() {
         if let Ok(v) = traverse(dir.to_path_buf(), files) {
             for file in v {
-                connection_strings.extend(extract(&file));
+                connections.extend(extract(&file));
             }
         }
     }
 
+    // write to CSV
     let mut wtr = Writer::from_path("output.csv")?;
-    wtr.write_record(["path", "data source", "user id", "password"])?;
-    for cs in connection_strings {
+    wtr.write_record(["path", "data source", "user id", "provider"])?;
+    for cs in connections {
         wtr.write_record(&[
             cs.path.unwrap(),
             cs.data_source.unwrap(),
             cs.user_id.unwrap(),
-            cs.password.unwrap(),
+            cs.provider.unwrap(),
         ])?;
     }
     wtr.flush()?;
+
     Ok(())
 }
 
@@ -132,13 +142,17 @@ mod tests {
 
     // test parsing of connection string
     #[test]
-    fn conn_str_created_successfully() {
+    fn conn_created_successfully() {
         let raw_cs = "Data Source=dvrpcdb2; User Id=NETS; Password=something;".to_string();
-        let cs = ConnectionString::new(raw_cs, "some filepath".to_string());
+        let cs = Connection::new(
+            "some filepath".to_string(),
+            raw_cs,
+            "some provider".to_string(),
+        );
         assert!(matches!(cs, Ok(_)));
         let cs = cs.unwrap();
         assert_eq!(cs.data_source, Some("dvrpcdb2".to_string()));
         assert_eq!(cs.user_id, Some("NETS".to_string()));
-        assert_eq!(cs.password, Some("something".to_string()))
+        assert_eq!(cs.provider, Some("some provider".to_string()))
     }
 }
