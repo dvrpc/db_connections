@@ -110,7 +110,7 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    let mut wtr = Writer::from_writer(io::stdout());
+    let mut wtr = Writer::from_path("output.csv")?;
     wtr.write_record(["path", "data source", "user id", "password"])?;
     for cs in connection_strings {
         wtr.write_record(&[
