@@ -1,6 +1,8 @@
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
+use csv::Writer;
 use serde::{Deserialize, Serialize};
 
 const DIR: &str = env!("DB_CONNECTIONS_DIR");
@@ -20,15 +22,17 @@ struct ConnectionString {
     data_source: Option<String>,
     user_id: Option<String>,
     password: Option<String>,
+    path: Option<String>,
 }
 
 impl ConnectionString {
     /// Parse connection string
-    fn new(conn_str: String) -> Result<Self, String> {
+    fn new(conn_str: String, filepath: String) -> Result<Self, String> {
         let mut connection_string = Self {
             data_source: None,
             user_id: None,
             password: None,
+            path: None,
         };
 
         for pair in conn_str.split(';') {
@@ -43,6 +47,7 @@ impl ConnectionString {
                     connection_string.password = Some(v.1.trim().to_string());
                 }
             }
+            connection_string.path = Some(filepath.clone());
         }
         if connection_string.data_source.is_none() || connection_string.user_id.is_none() {
             return Err("Notice: no data source or user id in string".to_string());
@@ -61,8 +66,10 @@ fn extract(f: &Path) -> Vec<ConnectionString> {
         if line.trim().starts_with('<') && line.contains("provider") {
             match serde_xml_rs::from_str::<Add>(line) {
                 Ok(v) => {
-                    // println!("{:?}: {:?}", f, cs);
-                    if let Ok(v) = ConnectionString::new(v.connection_string.clone()) {
+                    if let Ok(v) = ConnectionString::new(
+                        v.connection_string.clone(),
+                        f.to_string_lossy().to_string(),
+                    ) {
                         connection_strings.push(v)
                     }
                 }
@@ -102,8 +109,18 @@ fn main() -> std::io::Result<()> {
             }
         }
     }
-    println!("{:?}", connection_strings);
 
+    let mut wtr = Writer::from_writer(io::stdout());
+    wtr.write_record(["path", "data source", "user id", "password"])?;
+    for cs in connection_strings {
+        wtr.write_record(&[
+            cs.path.unwrap(),
+            cs.data_source.unwrap(),
+            cs.user_id.unwrap(),
+            cs.password.unwrap(),
+        ])?;
+    }
+    wtr.flush()?;
     Ok(())
 }
 
@@ -117,7 +134,7 @@ mod tests {
     #[test]
     fn conn_str_created_successfully() {
         let raw_cs = "Data Source=dvrpcdb2; User Id=NETS; Password=something;".to_string();
-        let cs = ConnectionString::new(raw_cs);
+        let cs = ConnectionString::new(raw_cs, "some filepath".to_string());
         assert!(matches!(cs, Ok(_)));
         let cs = cs.unwrap();
         assert_eq!(cs.data_source, Some("dvrpcdb2".to_string()));
