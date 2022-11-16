@@ -1,0 +1,5 @@
+This should not get crawled because of file extension.
+If it did, it would add 2 more to the ok connections count.
+
+<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>
+<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>

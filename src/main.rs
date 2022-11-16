@@ -110,12 +110,11 @@ fn traverse(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBu
 fn main() -> std::io::Result<()> {
     // crawl files and extract db connections
     let dir = Path::new(DIR);
-    let files = vec![];
     let mut connections = vec![];
     let mut errors = vec![];
 
     if dir.is_dir() {
-        if let Ok(v) = traverse(dir.to_path_buf(), files) {
+        if let Ok(v) = traverse(dir.to_path_buf(), vec![]) {
             for file in v {
                 let (c, e) = extract(&file);
                 connections.extend(c);
@@ -222,5 +221,40 @@ mod tests {
         );
         assert!(c.is_ok());
         assert_eq!(c.unwrap().user_id.unwrap(), "".to_string());
+    }
+    #[test]
+    fn traverse_finds_test_files() {
+        let files = traverse(Path::new("test_files/").to_path_buf(), vec![]);
+        assert!(files.is_ok())
+    }
+    #[test]
+    fn traverse_skips_proper_files() {
+        let files = traverse(Path::new("test_files/").to_path_buf(), vec![]).unwrap();
+        // "unmatched.extension" should be absent from list of files
+        // but "test.config" should exist
+        assert!(!files
+            .iter()
+            .any(|x| x.as_path() == Path::new("test_files/unmatched.extension")));
+        assert!(files
+            .iter()
+            .any(|x| x.as_path() == Path::new("test_files/test.config")))
+    }
+    #[test]
+    fn count_of_connections_and_errors_from_test_files_is_correct() {
+        let dir = Path::new(DIR);
+        let mut connections = vec![];
+        let mut errors = vec![];
+
+        if dir.is_dir() {
+            if let Ok(v) = traverse(dir.to_path_buf(), vec![]) {
+                for file in v {
+                    let (c, e) = extract(&file);
+                    connections.extend(c);
+                    errors.extend(e);
+                }
+            }
+        }
+
+        assert!(connections.len() == 12 && errors.len() == 21);
     }
 }
