@@ -64,13 +64,14 @@ fn extract(f: &Path) -> (Vec<Connection>, Vec<String>) {
         if line.trim().starts_with('<') && line.contains("provider") {
             match serde_xml_rs::from_str::<Add>(line) {
                 Ok(v) => {
+                    if v.provider.is_none() && v.provider_name.is_none() {
+                        errors.push(format!("{:?}: Provider not found.", f));
+                        continue;
+                    }
                     let provider = if v.provider.is_some() {
                         v.provider.unwrap()
-                    } else if v.provider_name.is_some() {
-                        v.provider_name.unwrap()
                     } else {
-                        // let this pass but point it out
-                        "Unrecognized provider format".to_string()
+                        v.provider_name.unwrap()
                     };
 
                     match Connection::new(
