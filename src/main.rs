@@ -158,16 +158,68 @@ mod tests {
     // test parsing of connection string
     #[test]
     fn conn_created_successfully() {
-        let raw_cs = "Data Source=dvrpcdb2; User Id=NETS; Password=something;".to_string();
-        let cs = Connection::new(
-            "some filepath".to_string(),
-            raw_cs,
-            "some provider".to_string(),
+        let c = Connection::new(
+            "path".to_string(),
+            "Data Source=db2; User Id=NETS; Password=something;".to_string(),
+            "provider".to_string(),
         );
-        assert!(matches!(cs, Ok(_)));
-        let cs = cs.unwrap();
-        assert_eq!(cs.data_source, Some("dvrpcdb2".to_string()));
-        assert_eq!(cs.user_id, Some("NETS".to_string()));
-        assert_eq!(cs.provider, Some("some provider".to_string()))
+        assert!(c.is_ok());
+        let c = c.unwrap();
+        assert_eq!(c.data_source, Some("db2".to_string()));
+        assert_eq!(c.user_id, Some("NETS".to_string()));
+        assert_eq!(c.provider, Some("provider".to_string()))
+    }
+
+    #[test]
+    fn conn_created_successfully_no_password() {
+        let c = Connection::new(
+            "path".to_string(),
+            "Data Source=db2; User Id=NETS;".to_string(),
+            "provider".to_string(),
+        );
+        assert!(c.is_ok());
+        let c = c.unwrap();
+        assert_eq!(c.data_source, Some("db2".to_string()));
+        assert_eq!(c.user_id, Some("NETS".to_string()));
+        assert_eq!(c.provider, Some("provider".to_string()))
+    }
+
+    #[test]
+    fn new_connection_errs_no_data_source() {
+        assert!(Connection::new(
+            "path".to_string(),
+            "User Id=NETS".to_string(),
+            "provider".to_string(),
+        )
+        .is_err())
+    }
+    #[test]
+    fn new_connection_ok_data_source_exists_but_empty() {
+        let c = Connection::new(
+            "path".to_string(),
+            "Data Source=; User Id=NETS;".to_string(),
+            "provider".to_string(),
+        );
+        assert!(c.is_ok());
+        assert_eq!(c.unwrap().data_source.unwrap(), "".to_string());
+    }
+    #[test]
+    fn new_connection_errs_no_user_id() {
+        assert!(Connection::new(
+            "path".to_string(),
+            "Data Source=db2".to_string(),
+            "provider".to_string(),
+        )
+        .is_err())
+    }
+    #[test]
+    fn new_connection_ok_user_id_exists_but_empty() {
+        let c = Connection::new(
+            "path".to_string(),
+            "Data Source=db2; User Id= ;".to_string(),
+            "provider".to_string(),
+        );
+        assert!(c.is_ok());
+        assert_eq!(c.unwrap().user_id.unwrap(), "".to_string());
     }
 }
