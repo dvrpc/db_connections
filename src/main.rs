@@ -3,6 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use csv::Writer;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 const DIR: &str = env!("DB_CONNECTIONS_DIR");
@@ -59,10 +60,18 @@ fn extract(f: &Path) -> (Vec<Connection>, Vec<String>) {
     let mut connections = vec![];
     let mut errors = vec![];
 
+    // read file to string and then capture regular expression matches
     let content = fs::read_to_string(f).unwrap();
-    for line in content.lines() {
-        if line.trim().starts_with('<') && line.contains("provider") {
-            match serde_xml_rs::from_str::<Add>(line) {
+    let re = Regex::new(r"(?s)<.*?>").unwrap();
+    let results = re
+        .captures_iter(&content)
+        .map(|cap| cap.get(0).unwrap().as_str())
+        .collect::<Vec<_>>();
+
+    // if "connectionString" in the XML element, process it
+    for result in results {
+        if result.contains(&"connectionString".to_string()) {
+            match serde_xml_rs::from_str::<Add>(result) {
                 Ok(v) => {
                     if v.provider.is_none() && v.provider_name.is_none() {
                         errors.push(format!("{:?}: Provider not found.", f));
@@ -153,25 +162,9 @@ fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    // test extraction of connection string from line
-
-    // test parsing of connection string
+    // test parsing of connectionString
     #[test]
     fn conn_created_successfully() {
-        let c = Connection::new(
-            "path".to_string(),
-            "Data Source=db2; User Id=NETS; Password=something;".to_string(),
-            "provider".to_string(),
-        );
-        assert!(c.is_ok());
-        let c = c.unwrap();
-        assert_eq!(c.data_source, Some("db2".to_string()));
-        assert_eq!(c.user_id, Some("NETS".to_string()));
-        assert_eq!(c.provider, Some("provider".to_string()))
-    }
-
-    #[test]
-    fn conn_created_successfully_no_password() {
         let c = Connection::new(
             "path".to_string(),
             "Data Source=db2; User Id=NETS;".to_string(),
@@ -183,7 +176,19 @@ mod tests {
         assert_eq!(c.user_id, Some("NETS".to_string()));
         assert_eq!(c.provider, Some("provider".to_string()))
     }
-
+    #[test]
+    fn conn_created_successfully_extra_fields() {
+        let c = Connection::new(
+            "path".to_string(),
+            "Language=rust; Data Source=db2; User Id=NETS; Password=something;".to_string(),
+            "provider".to_string(),
+        );
+        assert!(c.is_ok());
+        let c = c.unwrap();
+        assert_eq!(c.data_source, Some("db2".to_string()));
+        assert_eq!(c.user_id, Some("NETS".to_string()));
+        assert_eq!(c.provider, Some("provider".to_string()))
+    }
     #[test]
     fn new_connection_errs_no_data_source() {
         assert!(Connection::new(
@@ -222,6 +227,8 @@ mod tests {
         assert!(c.is_ok());
         assert_eq!(c.unwrap().user_id.unwrap(), "".to_string());
     }
+
+    // test traversal of files
     #[test]
     fn traverse_finds_test_files() {
         let files = traverse(Path::new("test_files/").to_path_buf(), vec![]);
@@ -254,7 +261,10 @@ mod tests {
                 }
             }
         }
+        println!("connections: {}", connections.len());
+        println!("errors: {}", errors.len());
+        println!("{:#?}", errors);
 
-        assert!(connections.len() == 12 && errors.len() == 21);
+        assert!(connections.len() == 18 && errors.len() == 21);
     }
 }
