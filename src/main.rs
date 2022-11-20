@@ -77,10 +77,9 @@ fn extract(f: &Path) -> (Vec<Connection>, Vec<String>) {
                         errors.push(format!("{:?}: Provider not found.", f));
                         continue;
                     }
-                    let provider = if v.provider.is_some() {
-                        v.provider.unwrap()
-                    } else {
-                        v.provider_name.unwrap()
+                    let provider = match v.provider {
+                        Some(v) => v,
+                        None => v.provider_name.unwrap(),
                     };
 
                     match Connection::new(
