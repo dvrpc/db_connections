@@ -260,9 +260,6 @@ mod tests {
                 }
             }
         }
-        println!("connections: {}", connections.len());
-        println!("errors: {}", errors.len());
-        println!("{:#?}", errors);
 
         assert!(connections.len() == 18 && errors.len() == 21);
     }
