@@ -70,7 +70,7 @@ fn extract(f: &Path) -> (Vec<Connection>, Vec<String>) {
 
     // if "connectionString" in the XML element, process it
     for result in results {
-        if result.contains(&"connectionString".to_string()) {
+        if result.contains("connectionString") {
             match serde_xml_rs::from_str::<Add>(result) {
                 Ok(v) => {
                     if v.provider.is_none() && v.provider_name.is_none() {
