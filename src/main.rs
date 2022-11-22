@@ -48,12 +48,18 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
     let mut errors = vec![];
 
     for file in files {
-        let content = fs::read_to_string(file.clone()).unwrap();
         let extension = file.extension().unwrap().to_str().unwrap();
+        let content: String;
 
         if extension == "config" || extension == "aspx" {
             // read file to string and then capture regular expression matches
             // (anything in angle brackets)
+            if let Ok(v) = fs::read_to_string(file.clone()) {
+                content = v.to_string()
+            } else {
+                errors.push(format!("Could not read file {:?}", file));
+                continue;
+            }
             let re = Regex::new(r"(?s)<.*?>").unwrap();
             let results = re
                 .captures_iter(&content)
@@ -70,6 +76,12 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
         } else if extension == "asp" {
             // read file to string and then capture regular expression matches
             // (anything in double quotes)
+            if let Ok(v) = fs::read_to_string(file.clone()) {
+                content = v.to_string()
+            } else {
+                errors.push(format!("Could not read file {:?}", file));
+                continue;
+            }
             let re = Regex::new(r#"(?s)".*?""#).unwrap();
             let results = re
                 .captures_iter(&content)
