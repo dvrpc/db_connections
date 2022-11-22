@@ -54,11 +54,12 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
         if extension == "config" || extension == "aspx" {
             // read file to string and then capture regular expression matches
             // (anything in angle brackets)
-            if let Ok(v) = fs::read_to_string(file.clone()) {
-                content = v.to_string()
-            } else {
-                errors.push(format!("Could not read file {:?}", file));
-                continue;
+            match fs::read_to_string(file.clone()) {
+                Ok(v) => content = v.to_string(),
+                Err(e) => {
+                    errors.push(format!("{:?}: Could not read file ({})", file, e));
+                    continue;
+                }
             }
             let re = Regex::new(r"(?s)<.*?>").unwrap();
             let results = re
@@ -76,11 +77,12 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
         } else if extension == "asp" {
             // read file to string and then capture regular expression matches
             // (anything in double quotes)
-            if let Ok(v) = fs::read_to_string(file.clone()) {
-                content = v.to_string()
-            } else {
-                errors.push(format!("Could not read file {:?}", file));
-                continue;
+            match fs::read_to_string(file.clone()) {
+                Ok(v) => content = v.to_string(),
+                Err(e) => {
+                    errors.push(format!("{:?}: Could not read file ({})", file, e));
+                    continue;
+                }
             }
             let re = Regex::new(r#"(?s)".*?""#).unwrap();
             let results = re
