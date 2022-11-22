@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -5,8 +6,6 @@ use std::path::{Path, PathBuf};
 use csv::Writer;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-
-const DIR: &str = env!("DB_CONNECTIONS_DIR");
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct AspNet {
@@ -178,10 +177,19 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
 
 fn main() -> std::io::Result<()> {
     // crawl files and extract db connections
-    let dir = Path::new(DIR);
 
+    // use dir provided by command line argument or default to cwd
+    let dir = if let Some(v) = env::args().nth(1) {
+        v
+    } else {
+        ".".to_string()
+    };
+    let dir = Path::new(&dir);
     if !dir.is_dir() {
-        println!("Please provide a valid directory.");
+        println!(
+            "Cannot find directory {:?}. Please provide a valid directory.",
+            dir
+        );
         return Ok(());
     }
 
@@ -259,7 +267,7 @@ mod tests {
     // from multiple files
     #[test]
     fn count_of_connections_and_errors_from_test_files_is_correct() {
-        let dir = Path::new(DIR);
+        let dir = Path::new("test_files");
         if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
             let (connections, errors) = extract_connections_from_files(v);
 
