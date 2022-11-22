@@ -203,7 +203,7 @@ fn main() -> std::io::Result<()> {
 
         // write to connections to CSV file
         if !connections.is_empty() {
-            let mut wtr = Writer::from_path("output.csv")?;
+            let mut wtr = Writer::from_path("connections.csv")?;
             wtr.write_record(["path", "data source", "user id", "provider"])?;
             for c in connections {
                 wtr.write_record(&[c.path, c.data_source, c.user_id, c.provider])?;
