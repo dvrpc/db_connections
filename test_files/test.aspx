@@ -1,6 +1,6 @@
 This is a test file.
-All files with .config, .asp, and .aspx have the same contents
-so 6x3=18 connections and 7x3=21 errors
+Files with .config and .aspx have the same content.
+2x6 = 12 ok connections, 2x7 = 14 errors.
 
 These 6 should be ok:
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>

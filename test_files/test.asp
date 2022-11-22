@@ -1,8 +1,17 @@
 This is a test file.
-All files with .config, .asp, and .aspx have the same contents
-so 6x3=18 connections and 7x3=21 errors
+It should produce 1 connection and 4 errors.
 
-These 6 should be ok:
+This should be ok:
+"Data Source=db2; User Id=dvrpc; Provider=System.OracleClient"
+
+These should be errors:
+"Data Source=db2; User Id=dvrpc; ProviderName=System.OracleClient"
+"Data Source=db2; Provider=System.OracleClient"
+"kUser Id=dvrpc; Provider=System.OracleClient"
+"Provider=System.OracleClient"
+
+
+These should just be ignored:
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" provider="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc; Password=something;" providerName="System.OracleClient"/>
@@ -18,8 +27,6 @@ These 6 should be ok:
 	User Id=dvrpc;" 
 	providerName="System.OracleClient"
 />
-
-These 7 should err:
 <add name="nets" connectionString="" providerName="System.OracleClient"/>
 <add name="nets" connectionString="User Id=dvrpc;" providerName="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2;" providerName="System.OracleClient"/>

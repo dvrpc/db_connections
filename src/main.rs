@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 const DIR: &str = env!("DB_CONNECTIONS_DIR");
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct Add {
+struct AspNet {
     name: String,
     #[serde(rename = "connectionString")]
     connection_string: String,
@@ -18,92 +18,30 @@ struct Add {
     provider_name: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+struct AspClassic {
+    #[serde(rename = "Provider")]
+    provider: String,
+    #[serde(rename = "Data Source")]
+    data_source: String,
+    #[serde(rename = "User Id")]
+    user_id: String,
+}
+
+#[derive(Debug, Clone)]
 struct Connection {
-    path: Option<String>,
-    data_source: Option<String>,
-    user_id: Option<String>,
-    provider: Option<String>,
+    path: String,
+    data_source: String,
+    user_id: String,
+    provider: String,
 }
 
-impl Connection {
-    fn new(path: String, conn_str: String, provider: String) -> Result<Self, String> {
-        let mut connection = Self {
-            path: None,
-            data_source: None,
-            user_id: None,
-            provider: None,
-        };
-
-        for pair in conn_str.split(';') {
-            if let Some(v) = pair.trim().split_once('=') {
-                if v.0.trim() == "Data Source" {
-                    connection.data_source = Some(v.1.trim().to_string());
-                }
-                if v.0.trim() == "User Id" {
-                    connection.user_id = Some(v.1.trim().to_string());
-                }
-            }
-        }
-        connection.path = Some(path);
-        connection.provider = Some(provider);
-
-        if connection.data_source.is_none() || connection.user_id.is_none() {
-            return Err("No data source or user id in string".to_string());
-        }
-        Ok(connection)
-    }
-}
-
-/// Extract connection string from xml, return tuple of successes and errors
-fn extract(f: &Path) -> (Vec<Connection>, Vec<String>) {
-    let mut connections = vec![];
-    let mut errors = vec![];
-
-    // read file to string and then capture regular expression matches
-    let content = fs::read_to_string(f).unwrap();
-    let re = Regex::new(r"(?s)<.*?>").unwrap();
-    let results = re
-        .captures_iter(&content)
-        .map(|cap| cap.get(0).unwrap().as_str())
-        .collect::<Vec<_>>();
-
-    // if "connectionString" in the XML element, process it
-    for result in results {
-        if result.contains("connectionString") {
-            match serde_xml_rs::from_str::<Add>(result) {
-                Ok(v) => {
-                    if v.provider.is_none() && v.provider_name.is_none() {
-                        errors.push(format!("{:?}: Provider not found.", f));
-                        continue;
-                    }
-                    let provider = match v.provider {
-                        Some(v) => v,
-                        None => v.provider_name.unwrap(),
-                    };
-
-                    match Connection::new(
-                        f.to_string_lossy().to_string(),
-                        v.connection_string.clone(),
-                        provider,
-                    ) {
-                        Ok(v) => connections.push(v),
-                        Err(e) => errors.push(format!("{:?}: {}", f, e)),
-                    }
-                }
-                Err(e) => errors.push(format!("{:?}: {}", f, e)),
-            }
-        }
-    }
-    (connections, errors)
-}
-
-// Get files matching extensions we want
-fn traverse(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBuf>> {
+/// Get files matching extensions we want.
+fn get_files(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBuf>> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         if entry.file_type()?.is_dir() {
-            files = traverse(entry.path(), files)?
+            files = get_files(entry.path(), files)?
         } else if let Some(v) = entry.path().extension() {
             if let Some(v) = v.to_str() {
                 if ["config", "aspx", "asp"].contains(&v) {
@@ -115,42 +53,172 @@ fn traverse(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBu
     Ok(files)
 }
 
-fn main() -> std::io::Result<()> {
-    // crawl files and extract db connections
-    let dir = Path::new(DIR);
+/// Iterate through files and extract Connections.
+fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<String>) {
     let mut connections = vec![];
     let mut errors = vec![];
 
-    if dir.is_dir() {
-        if let Ok(v) = traverse(dir.to_path_buf(), vec![]) {
-            for file in v {
-                let (c, e) = extract(&file);
-                connections.extend(c);
-                errors.extend(e);
+    for file in files {
+        let content = fs::read_to_string(file.clone()).unwrap();
+        let extension = file.extension().unwrap().to_str().unwrap();
+
+        if extension == "config" || extension == "aspx" {
+            // read file to string and then capture regular expression matches
+            // (anything in angle brackets)
+            let re = Regex::new(r"(?s)<.*?>").unwrap();
+            let results = re
+                .captures_iter(&content)
+                .map(|cap| cap.get(0).unwrap().as_str())
+                .collect::<Vec<_>>();
+
+            for result in results {
+                match extract_from_asp_net(result, &file) {
+                    Ok(None) => (),
+                    Ok(Some(v)) => connections.push(v),
+                    Err(e) => errors.push(e),
+                }
+            }
+        } else if extension == "asp" {
+            // read file to string and then capture regular expression matches
+            // (anything in double quotes)
+            let re = Regex::new(r#"(?s)".*?""#).unwrap();
+            let results = re
+                .captures_iter(&content)
+                .map(|cap| cap.get(0).unwrap().as_str())
+                .collect::<Vec<_>>();
+
+            for result in results {
+                match extract_from_asp_classic(result, &file) {
+                    Ok(None) => (),
+                    Ok(Some(v)) => connections.push(v),
+                    Err(e) => errors.push(e),
+                }
             }
         }
     }
+    (connections, errors)
+}
 
-    // write to connections to CSV file
-    if !connections.is_empty() {
-        let mut wtr = Writer::from_path("output.csv")?;
-        wtr.write_record(["path", "data source", "user id", "provider"])?;
-        for cs in connections {
-            wtr.write_record(&[
-                cs.path.unwrap(),
-                cs.data_source.unwrap(),
-                cs.user_id.unwrap(),
-                cs.provider.unwrap(),
-            ])?;
-        }
-        wtr.flush()?;
+/// Extract Connection from element string in ASP.NET format
+fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>, String> {
+    if !element.contains("connectionString") {
+        return Ok(None);
     }
 
-    // write errors to text file
-    if !errors.is_empty() {
-        let mut error_file = fs::File::create("errors.txt")?;
-        for error in errors {
-            writeln!(error_file, "{}", error)?;
+    match serde_xml_rs::from_str::<AspNet>(element) {
+        Ok(v) => {
+            if v.provider.is_none() & v.provider_name.is_none() {
+                return Err(format!("{:?}: Provider not found.", file));
+            }
+
+            let provider = if v.provider.is_none() {
+                v.provider_name.unwrap()
+            } else {
+                v.provider.unwrap()
+            };
+
+            let mut data_source = None;
+            let mut user_id = None;
+
+            for pair in v.connection_string.split(';') {
+                if let Some(v) = pair.trim().split_once('=') {
+                    if v.0.trim() == "Data Source" {
+                        data_source = Some(v.1.trim().to_string());
+                    }
+                    if v.0.trim() == "User Id" {
+                        user_id = Some(v.1.trim().to_string());
+                    }
+                }
+            }
+
+            if data_source.is_none() || user_id.is_none() {
+                return Err(format!("{:?}: Provider not found.", file));
+            }
+            Ok(Some(Connection {
+                path: file.to_string_lossy().to_string(),
+                data_source: data_source.unwrap(),
+                user_id: user_id.unwrap(),
+                provider,
+            }))
+        }
+        Err(e) => Err(format!("{:?}: {}", file, e)),
+    }
+}
+
+/// Extract Connection from element string in Classic ASP format.
+fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connection>, String> {
+    if !element.contains("Provider") {
+        return Ok(None);
+    }
+
+    let mut data_source = None;
+    let mut user_id = None;
+    let mut provider = None;
+    for parts in element.split(';') {
+        if let Some(v) = parts
+            .trim_start_matches('"')
+            .trim_end_matches('"')
+            .trim()
+            .split_once('=')
+        {
+            if v.0.trim() == "Data Source" {
+                data_source = Some(v.1.trim().to_string());
+            }
+            if v.0.trim() == "User Id" {
+                user_id = Some(v.1.trim().to_string());
+            }
+            if v.0.trim() == "Provider" {
+                provider = Some(v.1.trim().to_string());
+            }
+        }
+    }
+    if data_source.is_none() || user_id.is_none() || provider.is_none() {
+        return Err(format!(
+            "{:?}: Provider, Data Source, or User Id not found",
+            file
+        ));
+    }
+    Ok(Some(Connection {
+        path: file.to_string_lossy().to_string(),
+        data_source: data_source.unwrap(),
+        user_id: user_id.unwrap(),
+        provider: provider.unwrap(),
+    }))
+}
+
+fn main() -> std::io::Result<()> {
+    // crawl files and extract db connections
+    let dir = Path::new(DIR);
+
+    if !dir.is_dir() {
+        println!("Please provide a valid directory.");
+        return Ok(());
+    }
+
+    if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
+        if v.is_empty() {
+            println!("Could not find any matching files.");
+            return Ok(());
+        }
+
+        let (connections, errors) = extract_connections_from_files(v);
+
+        // write to connections to CSV file
+        if !connections.is_empty() {
+            let mut wtr = Writer::from_path("output.csv")?;
+            wtr.write_record(["path", "data source", "user id", "provider"])?;
+            for c in connections {
+                wtr.write_record(&[c.path, c.data_source, c.user_id, c.provider])?;
+            }
+            wtr.flush()?;
+        }
+
+        // write errors to text file
+        if !errors.is_empty() {
+            let mut error_file = fs::File::create("errors.txt")?;
+            for error in errors {
+                writeln!(error_file, "{}", error)?;
+            }
         }
     }
 
@@ -161,81 +229,36 @@ fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    // test parsing of connectionString
+    // test parsing/creation of AspNet and AspClassic
+    // and that they get turned into Connection properly
     #[test]
-    fn conn_created_successfully() {
-        let c = Connection::new(
-            "path".to_string(),
-            "Data Source=db2; User Id=NETS;".to_string(),
-            "provider".to_string(),
-        );
+    fn asp_net_string_success() {
+        let element_str = r#"<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>""#;
+        let file = Path::new("some_path");
+        let c = extract_from_asp_net(element_str, file);
         assert!(c.is_ok());
-        let c = c.unwrap();
-        assert_eq!(c.data_source, Some("db2".to_string()));
-        assert_eq!(c.user_id, Some("NETS".to_string()));
-        assert_eq!(c.provider, Some("provider".to_string()))
+        assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
+        assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
     }
     #[test]
-    fn conn_created_successfully_extra_fields() {
-        let c = Connection::new(
-            "path".to_string(),
-            "Language=rust; Data Source=db2; User Id=NETS; Password=something;".to_string(),
-            "provider".to_string(),
-        );
+    fn asp_classic_string_success() {
+        let element_str = "Data Source=db2; User Id=dvrpc; Provider=System.OracleClient";
+        let file = Path::new("some_path");
+        let c = extract_from_asp_classic(element_str, file);
         assert!(c.is_ok());
-        let c = c.unwrap();
-        assert_eq!(c.data_source, Some("db2".to_string()));
-        assert_eq!(c.user_id, Some("NETS".to_string()));
-        assert_eq!(c.provider, Some("provider".to_string()))
-    }
-    #[test]
-    fn new_connection_errs_no_data_source() {
-        assert!(Connection::new(
-            "path".to_string(),
-            "User Id=NETS".to_string(),
-            "provider".to_string(),
-        )
-        .is_err())
-    }
-    #[test]
-    fn new_connection_ok_data_source_exists_but_empty() {
-        let c = Connection::new(
-            "path".to_string(),
-            "Data Source=; User Id=NETS;".to_string(),
-            "provider".to_string(),
-        );
-        assert!(c.is_ok());
-        assert_eq!(c.unwrap().data_source.unwrap(), "".to_string());
-    }
-    #[test]
-    fn new_connection_errs_no_user_id() {
-        assert!(Connection::new(
-            "path".to_string(),
-            "Data Source=db2".to_string(),
-            "provider".to_string(),
-        )
-        .is_err())
-    }
-    #[test]
-    fn new_connection_ok_user_id_exists_but_empty() {
-        let c = Connection::new(
-            "path".to_string(),
-            "Data Source=db2; User Id= ;".to_string(),
-            "provider".to_string(),
-        );
-        assert!(c.is_ok());
-        assert_eq!(c.unwrap().user_id.unwrap(), "".to_string());
+        assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
+        assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
     }
 
     // test traversal of files
     #[test]
-    fn traverse_finds_test_files() {
-        let files = traverse(Path::new("test_files/").to_path_buf(), vec![]);
+    fn get_files_finds_test_files() {
+        let files = get_files(Path::new("test_files/").to_path_buf(), vec![]);
         assert!(files.is_ok())
     }
     #[test]
-    fn traverse_skips_proper_files() {
-        let files = traverse(Path::new("test_files/").to_path_buf(), vec![]).unwrap();
+    fn get_files_skips_proper_files() {
+        let files = get_files(Path::new("test_files/").to_path_buf(), vec![]).unwrap();
         // "unmatched.extension" should be absent from list of files
         // but "test.config" should exist
         assert!(!files
@@ -245,22 +268,15 @@ mod tests {
             .iter()
             .any(|x| x.as_path() == Path::new("test_files/test.config")))
     }
+    // test_files directory is set up to produce specific successes and errors
+    // from multiple files
     #[test]
     fn count_of_connections_and_errors_from_test_files_is_correct() {
         let dir = Path::new(DIR);
-        let mut connections = vec![];
-        let mut errors = vec![];
+        if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
+            let (connections, errors) = extract_connections_from_files(v);
 
-        if dir.is_dir() {
-            if let Ok(v) = traverse(dir.to_path_buf(), vec![]) {
-                for file in v {
-                    let (c, e) = extract(&file);
-                    connections.extend(c);
-                    errors.extend(e);
-                }
-            }
+            assert!(connections.len() == 13 && errors.len() == 18);
         }
-
-        assert!(connections.len() == 18 && errors.len() == 21);
     }
 }
