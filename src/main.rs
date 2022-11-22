@@ -1,4 +1,4 @@
-use std::fs::{self, File};
+use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -16,16 +16,6 @@ struct AspNet {
     provider: Option<String>,
     #[serde(rename = "providerName")]
     provider_name: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct AspClassic {
-    #[serde(rename = "Provider")]
-    provider: String,
-    #[serde(rename = "Data Source")]
-    data_source: String,
-    #[serde(rename = "User Id")]
-    user_id: String,
 }
 
 #[derive(Debug, Clone)]
@@ -221,7 +211,6 @@ fn main() -> std::io::Result<()> {
             }
         }
     }
-
     Ok(())
 }
 
@@ -229,10 +218,8 @@ fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    // test parsing/creation of AspNet and AspClassic
-    // and that they get turned into Connection properly
     #[test]
-    fn asp_net_string_success() {
+    fn extract_from_asp_net_succeeds() {
         let element_str = r#"<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>""#;
         let file = Path::new("some_path");
         let c = extract_from_asp_net(element_str, file);
@@ -241,7 +228,7 @@ mod tests {
         assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
     }
     #[test]
-    fn asp_classic_string_success() {
+    fn extract_from_asp_classic_succeeds() {
         let element_str = "Data Source=db2; User Id=dvrpc; Provider=System.OracleClient";
         let file = Path::new("some_path");
         let c = extract_from_asp_classic(element_str, file);
