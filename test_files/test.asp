@@ -7,7 +7,7 @@ This should be ok:
 These should be errors:
 "Data Source=db2; User Id=dvrpc; ProviderName=System.OracleClient"
 "Data Source=db2; Provider=System.OracleClient"
-"kUser Id=dvrpc; Provider=System.OracleClient"
+"User Id=dvrpc; Provider=System.OracleClient"
 "Provider=System.OracleClient"
 
 

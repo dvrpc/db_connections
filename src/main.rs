@@ -1,6 +1,5 @@
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use csv::Writer;
@@ -25,6 +24,12 @@ struct Connection {
     provider: String,
 }
 
+#[derive(Debug, Clone)]
+struct DbError {
+    path: String,
+    message: String,
+}
+
 /// Get files matching extensions we want.
 fn get_files(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathBuf>> {
     for entry in fs::read_dir(dir)? {
@@ -43,7 +48,7 @@ fn get_files(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathB
 }
 
 /// Iterate through files and extract Connections.
-fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<String>) {
+fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<DbError>) {
     let mut connections = vec![];
     let mut errors = vec![];
 
@@ -57,7 +62,10 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
             match fs::read_to_string(file.clone()) {
                 Ok(v) => content = v.to_string(),
                 Err(e) => {
-                    errors.push(format!("{:?}: Could not read file ({})", file, e));
+                    errors.push(DbError {
+                        path: file.to_string_lossy().to_string(),
+                        message: format!("Could not read file ({})", e),
+                    });
                     continue;
                 }
             }
@@ -71,7 +79,10 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
                 match extract_from_asp_net(result, &file) {
                     Ok(None) => (),
                     Ok(Some(v)) => connections.push(v),
-                    Err(e) => errors.push(e),
+                    Err(e) => errors.push(DbError {
+                        path: file.to_string_lossy().to_string(),
+                        message: e.to_string(),
+                    }),
                 }
             }
         } else if extension == "asp" {
@@ -80,7 +91,10 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
             match fs::read_to_string(file.clone()) {
                 Ok(v) => content = v.to_string(),
                 Err(e) => {
-                    errors.push(format!("{:?}: Could not read file ({})", file, e));
+                    errors.push(DbError {
+                        path: file.to_string_lossy().to_string(),
+                        message: format!("Could not read file ({})", e),
+                    });
                     continue;
                 }
             }
@@ -94,7 +108,10 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
                 match extract_from_asp_classic(result, &file) {
                     Ok(None) => (),
                     Ok(Some(v)) => connections.push(v),
-                    Err(e) => errors.push(e),
+                    Err(e) => errors.push(DbError {
+                        path: file.to_string_lossy().to_string(),
+                        message: e.to_string(),
+                    }),
                 }
             }
         }
@@ -111,7 +128,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
     match serde_xml_rs::from_str::<AspNet>(element) {
         Ok(v) => {
             if v.provider.is_none() & v.provider_name.is_none() {
-                return Err(format!("{:?}: Provider not found.", file));
+                return Err("Provider not found.".to_string());
             }
 
             let provider = if v.provider.is_none() {
@@ -135,7 +152,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
             }
 
             if data_source.is_none() || user_id.is_none() {
-                return Err(format!("{:?}: Provider not found.", file));
+                return Err("Data Source or User Id not found.".to_string());
             }
             Ok(Some(Connection {
                 path: file.to_string_lossy().to_string(),
@@ -144,7 +161,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
                 provider,
             }))
         }
-        Err(e) => Err(format!("{:?}: {}", file, e)),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -176,10 +193,7 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
         }
     }
     if data_source.is_none() || user_id.is_none() || provider.is_none() {
-        return Err(format!(
-            "{:?}: Provider, Data Source, or User Id not found",
-            file
-        ));
+        return Err("Provider, Data Source, or User Id not found".to_string());
     }
     Ok(Some(Connection {
         path: file.to_string_lossy().to_string(),
@@ -189,9 +203,8 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
     }))
 }
 
+/// Crawl files and write connections and errors to CSV files.
 fn main() -> std::io::Result<()> {
-    // crawl files and extract db connections
-
     // use dir provided by command line argument or default to cwd
     let dir = if let Some(v) = env::args().nth(1) {
         v
@@ -215,7 +228,7 @@ fn main() -> std::io::Result<()> {
 
         let (connections, errors) = extract_connections_from_files(v);
 
-        // write to connections to CSV file
+        // write connections to file
         if !connections.is_empty() {
             let mut wtr = Writer::from_path("connections.csv")?;
             wtr.write_record(["path", "data source", "user id", "provider"])?;
@@ -225,12 +238,14 @@ fn main() -> std::io::Result<()> {
             wtr.flush()?;
         }
 
-        // write errors to text file
+        // write errors to file
         if !errors.is_empty() {
-            let mut error_file = fs::File::create("errors.txt")?;
-            for error in errors {
-                writeln!(error_file, "{}", error)?;
+            let mut wtr = Writer::from_path("errors.csv")?;
+            wtr.write_record(["path", "error"])?;
+            for e in errors {
+                wtr.write_record(&[e.path, e.message])?;
             }
+            wtr.flush()?;
         }
     }
     Ok(())
