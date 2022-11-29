@@ -69,7 +69,7 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
                     continue;
                 }
             }
-            let re = Regex::new(r"(?s)<.*?>").unwrap();
+            let re = Regex::new(r"(?s)<add .*?>").unwrap();
             let results = re
                 .captures_iter(&content)
                 .map(|cap| cap.get(0).unwrap().as_str())
@@ -299,8 +299,9 @@ mod tests {
         let dir = Path::new("test_files");
         if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
             let (connections, errors) = extract_connections_from_files(v);
+            println!("{}, {}", connections.len(), errors.len());
 
-            assert!(connections.len() == 13 && errors.len() == 18);
+            assert!(connections.len() == 13 && errors.len() == 14);
         }
     }
 }

@@ -1,6 +1,6 @@
 This is a test file.
 Files with .config and .aspx have the same content.
-2x6 = 12 ok connections, 2x7 = 14 errors.
+2x6 = 12 ok connections, 2x7 = 10 errors.
 
 These 6 should be ok:
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>
@@ -13,20 +13,24 @@ These 6 should be ok:
 	User Id=dvrpc;" 
 	providerName="System.OracleClient"/>
 <add 
-	name="nets" 
+    name="nets" 
 	connectionString="Data Source=db2; 
 	User Id=dvrpc;" 
 	providerName="System.OracleClient"
 />
 
-These 7 should err:
+These 5 should err:
 <add name="nets" connectionString="" providerName="System.OracleClient"/>
 <add name="nets" connectionString="User Id=dvrpc;" providerName="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2;" providerName="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerInvalid="System.OracleClient"/>
-<name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>
-<this line starts with an angle bracket and contains connectionString>
 <add 
 	name="nets" 
 	connectionString="" 
 	providerName="System.OracleClient"/>
+
+These should be ignored:	
+<connectionStrings>
+</connectionStrings>
+<this line starts with an angle bracket and contains connectionString>
+<name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>
