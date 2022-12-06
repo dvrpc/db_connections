@@ -11,8 +11,12 @@ struct AspNet {
     name: String,
     #[serde(rename = "connectionString")]
     connection_string: String,
+    #[serde(alias = "Provider")]
     provider: Option<String>,
-    #[serde(rename = "providerName")]
+    #[serde(alias = "providerName")]
+    #[serde(alias = "Providername")]
+    #[serde(alias = "ProviderName")]
+    #[serde(alias = "providername")]
     provider_name: Option<String>,
 }
 
@@ -121,7 +125,7 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
 
 /// Extract Connection from element string in ASP.NET format
 fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>, String> {
-    if !element.contains("connectionString") {
+    if !element.to_lowercase().contains("connectionstring") {
         return Ok(None);
     }
 
@@ -142,10 +146,10 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
 
             for pair in v.connection_string.split(';') {
                 if let Some(v) = pair.trim().split_once('=') {
-                    if v.0.trim() == "Data Source" {
+                    if v.0.to_lowercase().trim() == "data source" {
                         data_source = Some(v.1.trim().to_string());
                     }
-                    if v.0.trim() == "User Id" || v.0.trim() == "User ID" {
+                    if v.0.to_lowercase().trim() == "user id" {
                         user_id = Some(v.1.trim().to_string());
                     }
                 }
@@ -167,7 +171,9 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
 
 /// Extract Connection from element string in Classic ASP format.
 fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connection>, String> {
-    if !(element.contains("Provider") || element.contains("providerName")) {
+    if !(element.to_lowercase().contains("provider")
+        || element.to_lowercase().contains("providername"))
+    {
         return Ok(None);
     }
 
@@ -181,13 +187,15 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
             .trim()
             .split_once('=')
         {
-            if v.0.trim() == "Data Source" {
+            if v.0.to_lowercase().trim() == "data source" {
                 data_source = Some(v.1.trim().to_string());
             }
-            if v.0.trim() == "User Id" || v.0.trim() == "User ID" {
+            if v.0.to_lowercase().trim() == "user id" {
                 user_id = Some(v.1.trim().to_string());
             }
-            if v.0.trim() == "Provider" || v.0.trim() == "providerName" {
+            if v.0.to_lowercase().trim() == "provider"
+                || v.0.to_lowercase().trim() == "providername"
+            {
                 provider = Some(v.1.trim().to_string());
             }
         }
@@ -301,7 +309,7 @@ mod tests {
             let (connections, errors) = extract_connections_from_files(v);
             println!("{}, {}", connections.len(), errors.len());
 
-            assert!(connections.len() == 14 && errors.len() == 13);
+            assert!(connections.len() == 20 && errors.len() == 13);
         }
     }
 }

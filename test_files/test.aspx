@@ -1,9 +1,12 @@
 This is a test file.
 Files with .config and .aspx have the same content.
-2x6 = 12 ok connections, 2x7 = 10 errors.
+2x9 = 18 ok connections, 2x5 = 10 errors.
 
-These 6 should be ok:
+These 9 should be ok:
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>
+<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" Providername="System.OracleClient"/>
+<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" ProviderName="System.OracleClient"/>
+<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providername="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" provider="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc; Password=something;" providerName="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=www.dvrpc.org)(PORT=9999))(CONNECT_DATA=(SERVICE_NAME=www.dvrpc.org))); Min Pool Size=0;  User Id=dvrpc;" provider="Oracle.Client"/> 
