@@ -145,7 +145,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
                     if v.0.trim() == "Data Source" {
                         data_source = Some(v.1.trim().to_string());
                     }
-                    if v.0.trim() == "User Id" {
+                    if v.0.trim() == "User Id" || v.0.trim() == "User ID" {
                         user_id = Some(v.1.trim().to_string());
                     }
                 }
@@ -167,7 +167,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
 
 /// Extract Connection from element string in Classic ASP format.
 fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connection>, String> {
-    if !element.contains("Provider") {
+    if !(element.contains("Provider") || element.contains("providerName")) {
         return Ok(None);
     }
 
@@ -184,10 +184,10 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
             if v.0.trim() == "Data Source" {
                 data_source = Some(v.1.trim().to_string());
             }
-            if v.0.trim() == "User Id" {
+            if v.0.trim() == "User Id" || v.0.trim() == "User ID" {
                 user_id = Some(v.1.trim().to_string());
             }
-            if v.0.trim() == "Provider" {
+            if v.0.trim() == "Provider" || v.0.trim() == "providerName" {
                 provider = Some(v.1.trim().to_string());
             }
         }
@@ -301,7 +301,7 @@ mod tests {
             let (connections, errors) = extract_connections_from_files(v);
             println!("{}, {}", connections.len(), errors.len());
 
-            assert!(connections.len() == 13 && errors.len() == 14);
+            assert!(connections.len() == 14 && errors.len() == 13);
         }
     }
 }
