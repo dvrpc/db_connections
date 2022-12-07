@@ -310,7 +310,6 @@ mod tests {
                 {}="System.OracleClient"/>""#,
                 provider
             );
-            println!("{:?}", element_str);
             let c = extract_from_asp_net(element_str, file);
             assert!(c.is_ok());
             assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
@@ -365,8 +364,6 @@ mod tests {
         let dir = Path::new("test_files");
         if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
             let (connections, errors) = extract_connections_from_files(v);
-            println!("{}, {}", connections.len(), errors.len());
-
             assert!(connections.len() == 16 && errors.len() == 13);
         }
     }
