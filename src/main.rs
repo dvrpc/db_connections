@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct AspNet {
-    name: String,
     #[serde(alias = "connectionString")]
     #[serde(alias = "Connectionstring")]
     #[serde(alias = "ConnectionString")]
