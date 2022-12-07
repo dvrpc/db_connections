@@ -133,34 +133,37 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
     }
 
     match serde_xml_rs::from_str::<AspNet>(element) {
-        Ok(v) => {
-            let provider = match v.provider {
-                Some(v) => v,
-                None => return Err("Provider not found.".to_string()),
-            };
-
+        Ok(mut v) => {
             let mut data_source = None;
             let mut user_id = None;
 
             for pair in v.connection_string.split(';') {
-                if let Some(v) = pair.trim().split_once('=') {
-                    if v.0.to_lowercase().trim() == "data source" {
-                        data_source = Some(v.1.trim().to_string());
+                if let Some(w) = pair.trim().split_once('=') {
+                    if w.0.to_lowercase().trim() == "data source" {
+                        data_source = Some(w.1.trim().to_string());
                     }
-                    if v.0.to_lowercase().trim() == "user id" {
-                        user_id = Some(v.1.trim().to_string());
+                    if w.0.to_lowercase().trim() == "user id" {
+                        user_id = Some(w.1.trim().to_string());
+                    }
+                    // in some cases, provider can be within connectionString
+                    // Use that (and overwrite any previous value from
+                    // a separate attribute)
+                    if w.0.to_lowercase().trim() == "provider"
+                        || w.0.to_lowercase().trim() == "providername"
+                    {
+                        v.provider = Some(w.1.trim().to_string());
                     }
                 }
             }
 
-            if data_source.is_none() || user_id.is_none() {
-                return Err("Data Source or User Id not found.".to_string());
+            if data_source.is_none() || user_id.is_none() || v.provider.is_none() {
+                return Err("Provider, Data Source, or User Id not found.".to_string());
             }
             Ok(Some(Connection {
                 path: file.to_string_lossy().to_string(),
                 data_source: data_source.unwrap(),
                 user_id: user_id.unwrap(),
-                provider,
+                provider: v.provider.unwrap(),
             }))
         }
         Err(e) => Err(e.to_string()),
@@ -169,9 +172,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
 
 /// Extract Connection from element string in Classic ASP format.
 fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connection>, String> {
-    if !(element.to_lowercase().contains("provider")
-        || element.to_lowercase().contains("providername"))
-    {
+    if !element.to_lowercase().contains("provider") {
         return Ok(None);
     }
 
@@ -328,7 +329,7 @@ mod tests {
             let (connections, errors) = extract_connections_from_files(v);
             println!("{}, {}", connections.len(), errors.len());
 
-            assert!(connections.len() == 20 && errors.len() == 13);
+            assert!(connections.len() == 16 && errors.len() == 13);
         }
     }
 }
