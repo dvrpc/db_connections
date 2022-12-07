@@ -284,7 +284,11 @@ mod tests {
             let c = extract_from_asp_net(element_str, file);
             assert!(c.is_ok());
             assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
-            assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
+            assert_eq!(c.clone().unwrap().unwrap().user_id, "dvrpc".to_string());
+            assert_eq!(
+                c.unwrap().unwrap().provider,
+                "System.OracleClient".to_string()
+            )
         }
     }
     #[test]
@@ -298,7 +302,11 @@ mod tests {
             let c = extract_from_asp_classic(element_str, file);
             assert!(c.is_ok());
             assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
-            assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
+            assert_eq!(c.clone().unwrap().unwrap().user_id, "dvrpc".to_string());
+            assert_eq!(
+                c.unwrap().unwrap().provider,
+                "System.OracleClient".to_string()
+            )
         }
     }
 
