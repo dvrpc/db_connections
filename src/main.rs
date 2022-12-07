@@ -1,10 +1,12 @@
 use std::env;
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use csv::Writer;
+use log::{error, info};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use simplelog::*;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct AspNet {
@@ -211,6 +213,35 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
 
 /// Crawl files and write connections and errors to CSV files.
 fn main() -> std::io::Result<()> {
+    // Log a few messages related to running this program itself,
+    // not the processing of files (those go into the generated CSV files).
+    // Build the Config to be used for logging
+    let config = ConfigBuilder::new()
+        .set_time_format_custom(format_description!(
+            "[year]-[month]-[day] [hour]:[minute]:[second] \
+                [offset_hour sign:mandatory][offset_minute]"
+        ))
+        .build();
+    CombinedLogger::init(vec![
+        TermLogger::new(
+            LevelFilter::Info,
+            config.clone(),
+            TerminalMode::Mixed,
+            ColorChoice::Auto,
+        ),
+        WriteLogger::new(
+            LevelFilter::Info,
+            config,
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open("db_connections.log")?,
+        ),
+    ])
+    .unwrap();
+
+    info!("Program started.");
+
     // use dir provided by command line argument or default to cwd
     let dir = if let Some(v) = env::args().nth(1) {
         v
@@ -219,7 +250,7 @@ fn main() -> std::io::Result<()> {
     };
     let dir = Path::new(&dir);
     if !dir.is_dir() {
-        println!(
+        error!(
             "Cannot find directory {:?}. Please provide a valid directory.",
             dir
         );
@@ -228,7 +259,7 @@ fn main() -> std::io::Result<()> {
 
     if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
         if v.is_empty() {
-            println!("Could not find any matching files.");
+            info!("Could not find any matching files.");
             return Ok(());
         }
 
@@ -254,6 +285,7 @@ fn main() -> std::io::Result<()> {
             wtr.flush()?;
         }
     }
+    info!("Finished.");
     Ok(())
 }
 

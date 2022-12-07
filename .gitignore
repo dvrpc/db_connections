@@ -1,3 +1,4 @@
 /target
 connections.csv
 errors.csv
+*.log
