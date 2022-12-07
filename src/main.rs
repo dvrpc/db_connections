@@ -242,49 +242,48 @@ fn main() -> std::io::Result<()> {
 
     info!("Program started.");
 
-    // use dir provided by command line argument or default to cwd
-    let dir = if let Some(v) = env::args().nth(1) {
-        v
-    } else {
-        ".".to_string()
-    };
-    let dir = Path::new(&dir);
-    if !dir.is_dir() {
-        error!(
-            "Cannot find directory {:?}. Please provide a valid directory.",
-            dir
-        );
-        return Ok(());
+    // use dirs provided by command line arguments or default to cwd
+    let mut dirs = env::args().skip(1).collect::<Vec<_>>();
+
+    if dirs.is_empty() {
+        dirs = vec![".".to_string()]
     }
 
-    if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
-        if v.is_empty() {
-            info!("Could not find any matching files.");
-            return Ok(());
-        }
+    let mut files = vec![];
 
-        let (connections, errors) = extract_connections_from_files(v);
+    for dir in dirs {
+        let dir = Path::new(&dir);
 
-        // write connections to file
-        if !connections.is_empty() {
-            let mut wtr = Writer::from_path("connections.csv")?;
-            wtr.write_record(["path", "data source", "user id", "provider"])?;
-            for c in connections {
-                wtr.write_record(&[c.path, c.data_source, c.user_id, c.provider])?;
+        if !dir.is_dir() {
+            error!("Could not find directory {:?} - skipping.", dir);
+        } else if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
+            if v.is_empty() {
+                info!("Could not find any matching files in {:?}.", dir);
+                continue;
+            } else {
+                files.extend(v)
             }
-            wtr.flush()?;
-        }
-
-        // write errors to file
-        if !errors.is_empty() {
-            let mut wtr = Writer::from_path("errors.csv")?;
-            wtr.write_record(["path", "error"])?;
-            for e in errors {
-                wtr.write_record(&[e.path, e.message])?;
-            }
-            wtr.flush()?;
         }
     }
+
+    let (connections, errors) = extract_connections_from_files(files);
+
+    // write connections to file
+    let mut wtr = Writer::from_path("connections.csv")?;
+    wtr.write_record(["path", "data source", "user id", "provider"])?;
+    for c in connections {
+        wtr.write_record(&[c.path, c.data_source, c.user_id, c.provider])?;
+    }
+    wtr.flush()?;
+
+    // write errors to file
+    let mut wtr = Writer::from_path("errors.csv")?;
+    wtr.write_record(["path", "error"])?;
+    for e in errors {
+        wtr.write_record(&[e.path, e.message])?;
+    }
+    wtr.flush()?;
+
     info!("Finished.");
     Ok(())
 }

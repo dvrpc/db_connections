@@ -1,8 +1,10 @@
 # db_connections
 
-Traverse a directory and extract database connection information from ASP.NET and classic ASP files, (possibly) creating two files as output: a CSV file for connections and a CSV file for errors, which will be placed in the directory this program is run from.
+Traverse directories and extract database connection information from ASP.NET (.aspx and .config) and classic ASP (.asp) files, (possibly) creating two files as output: a CSV file for connections and a CSV file for errors, which will be placed in the directory this program is run from.
 
-If the directory to be traversed isn't provided explicitly (e.g. `cargo run -- some/path`), it will be set to the current working directory.
+The directories to traverse (recursively) can be specified as arguments to the program - e.g. `cargo run -- some/path/ some/other/path`. If no command line arguments are provided, the current directory will be traversed.
+
+A log of the program's activity is created in the directory the program is run from.
 
 ## Tests
 
