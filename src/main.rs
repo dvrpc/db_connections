@@ -9,15 +9,18 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct AspNet {
     name: String,
-    #[serde(rename = "connectionString")]
+    #[serde(alias = "connectionString")]
+    #[serde(alias = "Connectionstring")]
+    #[serde(alias = "ConnectionString")]
+    #[serde(alias = "connectionstring")]
     connection_string: String,
     #[serde(alias = "Provider")]
-    provider: Option<String>,
+    #[serde(alias = "provider")]
     #[serde(alias = "providerName")]
     #[serde(alias = "Providername")]
     #[serde(alias = "ProviderName")]
     #[serde(alias = "providername")]
-    provider_name: Option<String>,
+    provider: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -131,14 +134,9 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Result<Option<Connection>
 
     match serde_xml_rs::from_str::<AspNet>(element) {
         Ok(v) => {
-            if v.provider.is_none() & v.provider_name.is_none() {
-                return Err("Provider not found.".to_string());
-            }
-
-            let provider = if v.provider.is_none() {
-                v.provider_name.unwrap()
-            } else {
-                v.provider.unwrap()
+            let provider = match v.provider {
+                Some(v) => v,
+                None => return Err("Provider not found.".to_string()),
             };
 
             let mut data_source = None;
@@ -262,24 +260,45 @@ fn main() -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    const PROVIDER_SPELLINGS: [&str; 6] = [
+        "provider",
+        "Provider",
+        "providerName",
+        "Providername",
+        "ProviderName",
+        "providername",
+    ];
 
     #[test]
     fn extract_from_asp_net_succeeds() {
-        let element_str = r#"<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerName="System.OracleClient"/>""#;
         let file = Path::new("some_path");
-        let c = extract_from_asp_net(element_str, file);
-        assert!(c.is_ok());
-        assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
-        assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
+        for provider in PROVIDER_SPELLINGS {
+            let element_str = &format!(
+                r#"<add name="nets" 
+                connectionString="Data Source=db2; User Id=dvrpc;" 
+                {}="System.OracleClient"/>""#,
+                provider
+            );
+            println!("{:?}", element_str);
+            let c = extract_from_asp_net(element_str, file);
+            assert!(c.is_ok());
+            assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
+            assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
+        }
     }
     #[test]
     fn extract_from_asp_classic_succeeds() {
-        let element_str = "Data Source=db2; User Id=dvrpc; Provider=System.OracleClient";
         let file = Path::new("some_path");
-        let c = extract_from_asp_classic(element_str, file);
-        assert!(c.is_ok());
-        assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
-        assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
+        for provider in PROVIDER_SPELLINGS {
+            let element_str = &format!(
+                "Data Source=db2; User Id=dvrpc; {}=System.OracleClient",
+                provider,
+            );
+            let c = extract_from_asp_classic(element_str, file);
+            assert!(c.is_ok());
+            assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
+            assert_eq!(c.unwrap().unwrap().user_id, "dvrpc".to_string())
+        }
     }
 
     // test traversal of files
