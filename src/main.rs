@@ -248,6 +248,7 @@ fn main() -> std::io::Result<()> {
     if dirs.is_empty() {
         dirs = vec![".".to_string()]
     }
+    info!("Running on directories: {:?}", dirs);
 
     let mut files = vec![];
 
