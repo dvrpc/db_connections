@@ -33,7 +33,7 @@ struct Connection {
 }
 
 #[derive(Debug, Clone)]
-struct DbError {
+struct DbConnectionError {
     path: String,
     message: String,
 }
@@ -56,7 +56,9 @@ fn get_files(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathB
 }
 
 /// Iterate through files and extract Connections.
-fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<DbError>) {
+fn extract_connections_from_files(
+    files: Vec<PathBuf>,
+) -> (Vec<Connection>, Vec<DbConnectionError>) {
     let mut connections = vec![];
     let mut errors = vec![];
 
@@ -64,13 +66,13 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
         let extension = file.extension().unwrap().to_str().unwrap();
         let content: String;
 
-        if extension == "config" || extension == "aspx" || extension == "json" {
+        if extension == "config" || extension == "aspx" {
             // read file to string and then capture regular expression matches
             // (anything in angle brackets)
             match fs::read_to_string(file.clone()) {
                 Ok(v) => content = v.to_string(),
                 Err(e) => {
-                    errors.push(DbError {
+                    errors.push(DbConnectionError {
                         path: file.to_string_lossy().to_string(),
                         message: format!("Could not read file ({e})"),
                     });
@@ -100,7 +102,7 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
                     match extract_from_asp_net_format2(result, &file) {
                         Ok(None) => (),
                         Ok(Some(v)) => connections.push(v),
-                        Err(e) => errors.push(DbError {
+                        Err(e) => errors.push(DbConnectionError {
                             path: file.to_string_lossy().to_string(),
                             message: e.to_string(),
                         }),
@@ -110,12 +112,36 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
                     match extract_from_asp_net_format1(result, &file) {
                         Ok(None) => (),
                         Ok(Some(v)) => connections.push(v),
-                        Err(e) => errors.push(DbError {
+                        Err(e) => errors.push(DbConnectionError {
                             path: file.to_string_lossy().to_string(),
                             message: e.to_string(),
                         }),
                     }
                 }
+            }
+        } else if extension == "json" {
+            // read file to string and then capture regular expression matches
+            // (anything follow "ConnectionStrings")
+            match fs::read_to_string(file.clone()) {
+                Ok(v) => content = v.to_string(),
+                Err(e) => {
+                    errors.push(DbConnectionError {
+                        path: file.to_string_lossy().to_string(),
+                        message: format!("Could not read file ({e})"),
+                    });
+                    continue;
+                }
+            }
+
+            let re = Regex::new(r#"(?s)ConnectionStrings.*?}"#).unwrap();
+            let results = re
+                .captures_iter(&content)
+                .map(|cap| cap.get(0).unwrap().as_str())
+                .collect::<Vec<_>>();
+
+            for result in results {
+                let mut json_results = extract_from_json(result, &file);
+                connections.append(&mut json_results);
             }
         } else if extension == "asp" {
             // read file to string and then capture regular expression matches
@@ -123,13 +149,13 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
             match fs::read_to_string(file.clone()) {
                 Ok(v) => content = v.to_string(),
                 Err(e) => {
-                    errors.push(DbError {
+                    errors.push(DbConnectionError {
                         path: file.to_string_lossy().to_string(),
                         message: format!("Could not read file ({e})"),
                     });
                     continue;
                 }
-            }
+            };
             let re = Regex::new(r#"(?s)".*?""#).unwrap();
             let results = re
                 .captures_iter(&content)
@@ -140,7 +166,7 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
                 match extract_from_asp_classic(result, &file) {
                     Ok(None) => (),
                     Ok(Some(v)) => connections.push(v),
-                    Err(e) => errors.push(DbError {
+                    Err(e) => errors.push(DbConnectionError {
                         path: file.to_string_lossy().to_string(),
                         message: e.to_string(),
                     }),
@@ -273,6 +299,50 @@ fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connect
         user_id: user_id.unwrap(),
         provider: provider.unwrap(),
     }))
+}
+
+/// Extract Connection from element string in json settings file.
+///
+/// There can be multiple connection strings, so this one returns a Vec.
+fn extract_from_json(element: &str, file: &Path) -> Vec<Connection> {
+    let mut results = vec![];
+    for line in element.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let mut data_source = String::new();
+        let mut user_id = String::new();
+        let mut provider = String::new();
+
+        for parts in line.split(';') {
+            if let Some(v) = parts
+                .trim_start_matches('"')
+                .trim_end_matches('"')
+                .trim()
+                .split_once('=')
+            {
+                if v.0.to_lowercase().trim().contains("data source") {
+                    data_source = v.1.trim().to_string();
+                }
+                if v.0.to_lowercase().trim().contains("user id") {
+                    user_id = v.1.trim().to_string();
+                }
+                if v.0.to_lowercase().trim().contains("provider") {
+                    provider = v.1.trim().to_string();
+                }
+            }
+        }
+        // Only push Connection to Vec if any field contains data (all aren't empty).
+        if !data_source.is_empty() || !user_id.is_empty() || !provider.is_empty() {
+            results.push(Connection {
+                path: file.to_string_lossy().to_string(),
+                data_source,
+                user_id,
+                provider,
+            })
+        }
+    }
+    results
 }
 
 /// Crawl files and write connections and errors to CSV files.
@@ -444,7 +514,7 @@ mod tests {
         let dir = Path::new("test_files");
         if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
             let (connections, errors) = extract_connections_from_files(v);
-            assert_eq!(connections.len(), 18);
+            assert_eq!(connections.len(), 21);
             assert_eq!(errors.len(), 13)
         }
     }
