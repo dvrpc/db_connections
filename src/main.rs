@@ -168,6 +168,10 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Option<Connection> {
         .trim_matches('"')
         .to_string();
 
+    if !connection_strings.is_empty() {
+        return None;
+    }
+
     // remove initial part, "connectionString="
     let connection_strings = connection_strings.split_once('=').unwrap().1;
 
