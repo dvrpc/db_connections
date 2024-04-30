@@ -160,7 +160,7 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Option<Connection> {
 
     // First, try to get all information from the ConnectionString attribute.
     let re = Regex::new(r#"(?s)[C|c]onnection[S|s]tring=".*?""#).unwrap();
-    let connection_strings = re
+    let mut connection_strings = re
         .captures_iter(element)
         .map(|cap| cap.get(0).unwrap().as_str())
         .collect::<Vec<_>>()
@@ -168,12 +168,10 @@ fn extract_from_asp_net(element: &str, file: &Path) -> Option<Connection> {
         .trim_matches('"')
         .to_string();
 
-    if !connection_strings.is_empty() {
-        return None;
-    }
-
     // remove initial part, "connectionString="
-    let connection_strings = connection_strings.split_once('=').unwrap().1;
+    if let Some(v) = connection_strings.split_once('=') {
+        connection_strings = v.1.to_string();
+    }
 
     for pair in connection_strings.split(';') {
         if let Some(w) = pair.trim().trim_matches('"').split_once('=') {
