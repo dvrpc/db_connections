@@ -5,24 +5,7 @@ use std::path::{Path, PathBuf};
 use csv::Writer;
 use log::{error, info};
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use simplelog::*;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
-struct AspNet {
-    #[serde(alias = "connectionString")]
-    #[serde(alias = "Connectionstring")]
-    #[serde(alias = "ConnectionString")]
-    #[serde(alias = "connectionstring")]
-    connection_string: String,
-    #[serde(alias = "Provider")]
-    #[serde(alias = "provider")]
-    #[serde(alias = "providerName")]
-    #[serde(alias = "Providername")]
-    #[serde(alias = "ProviderName")]
-    #[serde(alias = "providername")]
-    provider: Option<String>,
-}
 
 #[derive(Debug, Clone)]
 struct Connection {
@@ -80,14 +63,14 @@ fn extract_connections_from_files(
                 }
             }
 
-            // format1
+            // ASP.NET format
             let re = Regex::new(r#"(?s)<add .*?>"#).unwrap();
             let mut results = re
                 .captures_iter(&content)
                 .map(|cap| cap.get(0).unwrap().as_str())
                 .collect::<Vec<_>>();
 
-            // format2
+            // ASP Classic format
             let re2 = Regex::new(r#"(?s)\(".*?"\)"#).unwrap();
             let mut results2 = re2
                 .captures_iter(&content)
@@ -97,25 +80,17 @@ fn extract_connections_from_files(
             results.append(&mut results2);
 
             for result in results {
-                // format2
+                // ASP Classic format
                 if result.starts_with('(') {
-                    match extract_from_asp_net_format2(result, &file) {
-                        Ok(None) => (),
-                        Ok(Some(v)) => connections.push(v),
-                        Err(e) => errors.push(DbConnectionError {
-                            path: file.to_string_lossy().to_string(),
-                            message: e.to_string(),
-                        }),
+                    match extract_from_asp_classic(result, &file) {
+                        None => (),
+                        Some(v) => connections.push(v),
                     }
-                // format1
+                // ASP.NET format
                 } else {
-                    match extract_from_asp_net_format1(result, &file) {
-                        Ok(None) => (),
-                        Ok(Some(v)) => connections.push(v),
-                        Err(e) => errors.push(DbConnectionError {
-                            path: file.to_string_lossy().to_string(),
-                            message: e.to_string(),
-                        }),
+                    match extract_from_asp_net(result, &file) {
+                        None => (),
+                        Some(v) => connections.push(v),
                     }
                 }
             }
@@ -164,12 +139,8 @@ fn extract_connections_from_files(
 
             for result in results {
                 match extract_from_asp_classic(result, &file) {
-                    Ok(None) => (),
-                    Ok(Some(v)) => connections.push(v),
-                    Err(e) => errors.push(DbConnectionError {
-                        path: file.to_string_lossy().to_string(),
-                        message: e.to_string(),
-                    }),
+                    None => (),
+                    Some(v) => connections.push(v),
                 }
             }
         }
@@ -177,128 +148,103 @@ fn extract_connections_from_files(
     (connections, errors)
 }
 
-/// Extract Connection from element string in ASP.NET format1 (<add * >)
-fn extract_from_asp_net_format1(element: &str, file: &Path) -> Result<Option<Connection>, String> {
+/// Extract Connection from element string in ASP.NET (<add * >)
+fn extract_from_asp_net(element: &str, file: &Path) -> Option<Connection> {
     if !element.to_lowercase().contains("connection") {
-        return Ok(None);
+        return None;
     }
 
-    match serde_xml_rs::from_str::<AspNet>(element) {
-        Ok(mut v) => {
-            let mut data_source = None;
-            let mut user_id = None;
+    let mut data_source = String::new();
+    let mut user_id = String::new();
+    let mut provider = String::new();
 
-            for pair in v.connection_string.split(';') {
-                if let Some(w) = pair.trim().split_once('=') {
-                    if w.0.to_lowercase().trim() == "data source" {
-                        data_source = Some(w.1.trim().to_string());
-                    }
-                    if w.0.to_lowercase().trim() == "user id" {
-                        user_id = Some(w.1.trim().to_string());
-                    }
-                    // in some cases, provider can be within connectionString
-                    // Use that (and overwrite any previous value from
-                    // a separate attribute)
-                    if w.0.to_lowercase().trim() == "provider"
-                        || w.0.to_lowercase().trim() == "providername"
-                    {
-                        v.provider = Some(w.1.trim().to_string());
-                    }
-                }
-            }
+    // First, try to get all information from the ConnectionString attribute.
+    let re = Regex::new(r#"(?s)[C|c]onnection[S|s]tring=".*?""#).unwrap();
+    let connection_strings = re
+        .captures_iter(element)
+        .map(|cap| cap.get(0).unwrap().as_str())
+        .collect::<Vec<_>>()
+        .join("")
+        .trim_matches('"')
+        .to_string();
 
-            if data_source.is_none() || user_id.is_none() || v.provider.is_none() {
-                return Err("Provider, Data Source, or User Id not found.".to_string());
+    // remove initial part, "connectionString="
+    let connection_strings = connection_strings.split_once('=').unwrap().1;
+
+    for pair in connection_strings.split(';') {
+        if let Some(w) = pair.trim().trim_matches('"').split_once('=') {
+            if w.0.to_lowercase().trim().contains("data source") {
+                data_source = w.1.trim().to_string();
             }
-            Ok(Some(Connection {
-                path: file.to_string_lossy().to_string(),
-                data_source: data_source.unwrap(),
-                user_id: user_id.unwrap(),
-                provider: v.provider.unwrap(),
-            }))
+            if w.0.to_lowercase().trim().contains("user id") {
+                user_id = w.1.trim().to_string();
+            }
+            if w.0.to_lowercase().trim().contains("provider") {
+                provider = w.1.trim().to_string();
+            }
         }
-        Err(e) => Err(e.to_string()),
+    }
+
+    // If provider wasn't found in connection string, check for separate attribute.
+    if provider.is_empty() {
+        let re = Regex::new(r#"(?s)[P|p]rovider.*?=".*?""#).unwrap();
+        let provider_caps = re
+            .captures_iter(element)
+            .map(|cap| cap.get(0).unwrap().as_str())
+            .collect::<Vec<_>>()
+            .join("");
+
+        if let Some(v) = provider_caps.trim().split_once('=') {
+            provider = v.1.trim().trim_matches('"').to_string();
+        }
+    }
+
+    if !data_source.is_empty() || !user_id.is_empty() || !provider.is_empty() {
+        Some(Connection {
+            path: file.to_string_lossy().to_string(),
+            data_source,
+            user_id,
+            provider,
+        })
+    } else {
+        None
     }
 }
-/// Extract Connection from element string in ASP.NET format1 ( ("*") )
-fn extract_from_asp_net_format2(
-    mut element: &str,
-    file: &Path,
-) -> Result<Option<Connection>, String> {
+
+/// Extract Connection from element string in ASP.NET format2 or ASP Classic ( ("*") )
+fn extract_from_asp_classic(mut element: &str, file: &Path) -> Option<Connection> {
     // trim to just the part within `("")`
     element = element.trim_start_matches("(\"");
     element = element.trim_end_matches("\")");
 
-    let mut data_source = None;
-    let mut user_id = None;
-    let mut provider = None;
+    let mut data_source = String::new();
+    let mut user_id = String::new();
+    let mut provider = String::new();
 
     for pair in element.split(';') {
-        if let Some(w) = pair.trim().split_once('=') {
-            if w.0.to_lowercase().trim() == "data source" {
-                data_source = Some(w.1.trim().to_string());
+        if let Some(w) = pair.trim().trim_matches('"').split_once('=') {
+            if w.0.to_lowercase().trim().contains("data source") {
+                data_source = w.1.trim().to_string();
             }
-            if w.0.to_lowercase().trim() == "user id" {
-                user_id = Some(w.1.trim().to_string());
+            if w.0.to_lowercase().trim().contains("user id") {
+                user_id = w.1.trim().to_string();
             }
-            if w.0.to_lowercase().trim() == "provider"
-                || w.0.to_lowercase().trim() == "providername"
-            {
-                provider = Some(w.1.trim().to_string());
+            if w.0.to_lowercase().trim().contains("provider") {
+                provider = w.1.trim().to_string();
             }
         }
     }
 
-    if data_source.is_none() || user_id.is_none() || provider.is_none() {
-        return Err("Provider, Data Source, or User Id not found.".to_string());
+    if !data_source.is_empty() || !user_id.is_empty() || !provider.is_empty() {
+        Some(Connection {
+            path: file.to_string_lossy().to_string(),
+            data_source,
+            user_id,
+            provider,
+        })
+    } else {
+        None
     }
-
-    Ok(Some(Connection {
-        path: file.to_string_lossy().to_string(),
-        data_source: data_source.unwrap(),
-        user_id: user_id.unwrap(),
-        provider: provider.unwrap(),
-    }))
-}
-
-/// Extract Connection from element string in Classic ASP format.
-fn extract_from_asp_classic(element: &str, file: &Path) -> Result<Option<Connection>, String> {
-    if !element.to_lowercase().contains("provider") {
-        return Ok(None);
-    }
-
-    let mut data_source = None;
-    let mut user_id = None;
-    let mut provider = None;
-    for parts in element.split(';') {
-        if let Some(v) = parts
-            .trim_start_matches('"')
-            .trim_end_matches('"')
-            .trim()
-            .split_once('=')
-        {
-            if v.0.to_lowercase().trim() == "data source" {
-                data_source = Some(v.1.trim().to_string());
-            }
-            if v.0.to_lowercase().trim() == "user id" {
-                user_id = Some(v.1.trim().to_string());
-            }
-            if v.0.to_lowercase().trim() == "provider"
-                || v.0.to_lowercase().trim() == "providername"
-            {
-                provider = Some(v.1.trim().to_string());
-            }
-        }
-    }
-    if data_source.is_none() || user_id.is_none() || provider.is_none() {
-        return Err("Provider, Data Source, or User Id not found".to_string());
-    }
-    Ok(Some(Connection {
-        path: file.to_string_lossy().to_string(),
-        data_source: data_source.unwrap(),
-        user_id: user_id.unwrap(),
-        provider: provider.unwrap(),
-    }))
 }
 
 /// Extract Connection from element string in json settings file.
@@ -436,7 +382,7 @@ mod tests {
     ];
 
     #[test]
-    fn extract_from_asp_net_format1_succeeds() {
+    fn extract_from_asp_net_succeeds() {
         let file = Path::new("some_path");
         for provider in PROVIDER_SPELLINGS {
             let element_str = &format!(
@@ -444,48 +390,41 @@ mod tests {
                 connectionString="Data Source=db2; User Id=dvrpc;" 
                 {provider}="System.OracleClient"/>""#
             );
-            let c = extract_from_asp_net_format1(element_str, file);
-            assert!(c.is_ok());
-            assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
-            assert_eq!(c.clone().unwrap().unwrap().user_id, "dvrpc".to_string());
-            assert_eq!(
-                c.unwrap().unwrap().provider,
-                "System.OracleClient".to_string()
-            )
+            let c = extract_from_asp_net(element_str, file);
+            assert!(c.is_some());
+            assert_eq!(c.clone().unwrap().data_source, "db2".to_string());
+            assert_eq!(c.clone().unwrap().user_id, "dvrpc".to_string());
+            assert_eq!(c.unwrap().provider, "System.OracleClient".to_string())
         }
     }
+
     #[test]
-    fn extract_from_asp_net_format2_succeeds() {
+    fn extract_from_asp_classic_succeeds_1() {
         let file = Path::new("some_path");
         for provider in PROVIDER_SPELLINGS {
             let element_str = &format!(
                 r#"("{provider}=OraOLEDB.Oracle;
                 Data Source=dvrpcdb2;User ID=dvrpc;Password=something;")"#
             );
-            let c = extract_from_asp_net_format2(element_str, file);
-            assert!(c.is_ok());
-            assert_eq!(
-                c.clone().unwrap().unwrap().data_source,
-                "dvrpcdb2".to_string()
-            );
-            assert_eq!(c.clone().unwrap().unwrap().user_id, "dvrpc".to_string());
-            assert_eq!(c.unwrap().unwrap().provider, "OraOLEDB.Oracle".to_string())
+            let c = extract_from_asp_classic(element_str, file);
+            assert!(c.is_some());
+            assert_eq!(c.clone().unwrap().data_source, "dvrpcdb2".to_string());
+            assert_eq!(c.clone().unwrap().user_id, "dvrpc".to_string());
+            assert_eq!(c.unwrap().provider, "OraOLEDB.Oracle".to_string())
         }
     }
+
     #[test]
-    fn extract_from_asp_classic_succeeds() {
+    fn extract_from_asp_classic_succeeds_2() {
         let file = Path::new("some_path");
         for provider in PROVIDER_SPELLINGS {
             let element_str =
                 &format!("Data Source=db2; User Id=dvrpc; {provider}=System.OracleClient",);
             let c = extract_from_asp_classic(element_str, file);
-            assert!(c.is_ok());
-            assert_eq!(c.clone().unwrap().unwrap().data_source, "db2".to_string());
-            assert_eq!(c.clone().unwrap().unwrap().user_id, "dvrpc".to_string());
-            assert_eq!(
-                c.unwrap().unwrap().provider,
-                "System.OracleClient".to_string()
-            )
+            assert!(c.is_some());
+            assert_eq!(c.clone().unwrap().data_source, "db2".to_string());
+            assert_eq!(c.clone().unwrap().user_id, "dvrpc".to_string());
+            assert_eq!(c.unwrap().provider, "System.OracleClient".to_string())
         }
     }
 
@@ -495,6 +434,7 @@ mod tests {
         let files = get_files(Path::new("test_files/").to_path_buf(), vec![]);
         assert!(files.is_ok())
     }
+
     #[test]
     fn get_files_skips_proper_files() {
         let files = get_files(Path::new("test_files/").to_path_buf(), vec![]).unwrap();
@@ -507,6 +447,7 @@ mod tests {
             .iter()
             .any(|x| x.as_path() == Path::new("test_files/test.config")))
     }
+
     // test_files directory is set up to produce specific successes and errors
     // from multiple files
     #[test]
@@ -514,8 +455,8 @@ mod tests {
         let dir = Path::new("test_files");
         if let Ok(v) = get_files(dir.to_path_buf(), vec![]) {
             let (connections, errors) = extract_connections_from_files(v);
-            assert_eq!(connections.len(), 21);
-            assert_eq!(errors.len(), 13)
+            assert_eq!(connections.len(), 30);
+            assert_eq!(errors.len(), 0)
         }
     }
 }

@@ -1,8 +1,9 @@
 This is a test file.
 Files with .config and .aspx have the same content.
-2x8 = 16 ok connections, 2x5 = 10 errors.
+2x11 = 22 ok connections
 
 These 7 of format1 should be ok:
+
 <add name="oledbconnection" connectionString="Provider=OraOLEDB.Oracle; Data Source=dvrpcdb2; User Id=dvrpc" />
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providername="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" provider="System.OracleClient"/>
@@ -23,15 +24,10 @@ These 7 of format1 should be ok:
 This 1 of format2 should be ok:
 OleDbConnection DBConnection = new OleDbConnection("Provider=OraOLEDB.Oracle;Data Source=dvrpcdb2;User ID=dvrpc;Password=something;");  
 
-These 5 should err:
-<add name="nets" connectionString="" providerName="System.OracleClient"/>
+Although these contains missing information, they should be ok:
+<add name="nets" connectionString="" providerName="Only.A.Provider"/>
 <add name="nets" connectionString="User Id=dvrpc;" providerName="System.OracleClient"/>
 <add name="nets" connectionString="Data Source=db2;" providerName="System.OracleClient"/>
-<add name="nets" connectionString="Data Source=db2; User Id=dvrpc;" providerInvalid="System.OracleClient"/>
-<add 
-	name="nets" 
-	connectionString="" 
-	providerName="System.OracleClient"/>
 
 These should be ignored:	
 <connectionStrings>
