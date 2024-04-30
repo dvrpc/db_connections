@@ -46,7 +46,7 @@ fn get_files(dir: PathBuf, mut files: Vec<PathBuf>) -> std::io::Result<Vec<PathB
             files = get_files(entry.path(), files)?
         } else if let Some(v) = entry.path().extension() {
             if let Some(v) = v.to_str() {
-                if ["config", "aspx", "asp"].contains(&v) {
+                if ["config", "aspx", "asp", "json"].contains(&v) {
                     files.push(entry.path().clone());
                 }
             }
@@ -64,7 +64,7 @@ fn extract_connections_from_files(files: Vec<PathBuf>) -> (Vec<Connection>, Vec<
         let extension = file.extension().unwrap().to_str().unwrap();
         let content: String;
 
-        if extension == "config" || extension == "aspx" {
+        if extension == "config" || extension == "aspx" || extension == "json" {
             // read file to string and then capture regular expression matches
             // (anything in angle brackets)
             match fs::read_to_string(file.clone()) {
